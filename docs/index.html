@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Equity Multiples Dashboard</title>
+<title>Equity Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -109,7 +109,8 @@ td.sep { border-left: 1px solid var(--border); }
 .na { color: var(--text3); }
 .pe-lo { color: #34d399; }
 .pe-hi { color: #f87171; }
-.mktcap { color: var(--text2); font-size: 11px; }
+.up { color: #34d399; }
+.down { color: #f87171; }
 
 #loading { text-align: center; padding: 80px 0; color: var(--text3); }
 #err { display: none; text-align: center; padding: 60px 0; color: var(--down); }
@@ -118,7 +119,7 @@ td.sep { border-left: 1px solid var(--border); }
 <body>
 
 <header>
-  <h1>Equity Multiples Dashboard</h1>
+  <h1>Equity Dashboard</h1>
   <span id="updated">로딩 중...</span>
 </header>
 
@@ -132,24 +133,26 @@ td.sep { border-left: 1px solid var(--border); }
 
 <script>
 const fmt = {
-  num: v => v == null ? '<span class="na">-</span>' : Number(v).toLocaleString('ko-KR'),
-  x:   v => v == null ? '<span class="na">-</span>' : `${Number(v).toFixed(1)}x`,
-  pct: v => v == null ? '<span class="na">-</span>' : `${Number(v).toFixed(1)}%`,
-  pe:  v => {
+  x:    v => v == null ? '<span class="na">-</span>' : `${Number(v).toFixed(1)}x`,
+  pct:  v => v == null ? '<span class="na">-</span>' : `${Number(v).toFixed(1)}%`,
+  num:  v => v == null ? '<span class="na">-</span>' : Number(v).toLocaleString('ko-KR'),
+  yoy:  v => {
+    if (v == null) return '<span class="na">-</span>';
+    const cls = v > 0 ? 'up' : v < 0 ? 'down' : '';
+    return `<span class="${cls}">${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%</span>`;
+  },
+  pe: v => {
     if (v == null) return '<span class="na">-</span>';
     const cls = v < 15 ? 'pe-lo' : v > 30 ? 'pe-hi' : '';
     return `<span class="${cls}">${Number(v).toFixed(1)}x</span>`;
   },
-  mktcap: v => {
-    if (v == null) return '<span class="na">-</span>';
-    return `<span class="mktcap">${Number(v).toLocaleString()}십억</span>`;
-  }
+  mktcap: v => v == null ? '<span class="na">-</span>'
+    : `${Number(v).toLocaleString('ko-KR')}십억`,
 };
 
-function renderTable(companies) {
+function renderMultiples(companies) {
   return `
-  <div class="table-wrap">
-  <table>
+  <div class="table-wrap"><table>
     <thead>
       <tr>
         <th rowspan="2" style="text-align:left">종목</th>
@@ -183,8 +186,46 @@ function renderTable(companies) {
         <td>${fmt.pct(c.roe?.['2027'])}</td>
       </tr>`).join('')}
     </tbody>
-  </table>
-  </div>`;
+  </table></div>`;
+}
+
+function renderEarnings(companies) {
+  return `
+  <div class="table-wrap"><table>
+    <thead>
+      <tr>
+        <th rowspan="2" style="text-align:left">종목</th>
+        <th rowspan="2">시총(십억)</th>
+        <th colspan="3" class="grp sep">매출액(십억원)</th>
+        <th colspan="3" class="grp sep">영업이익(십억원)</th>
+        <th colspan="2" class="grp sep">OPM</th>
+        <th colspan="2" class="grp sep">NPM</th>
+      </tr>
+      <tr>
+        <th class="sep">2026E</th><th>2027E</th><th>yoy</th>
+        <th class="sep">2026E</th><th>2027E</th><th>yoy</th>
+        <th class="sep">2026E</th><th>2027E</th>
+        <th class="sep">2026E</th><th>2027E</th>
+      </tr>
+    </thead>
+    <tbody>
+    ${companies.map(c => `
+      <tr>
+        <td>${c.name}<span class="ticker">${c.ticker}</span></td>
+        <td>${fmt.mktcap(c.mktcap)}</td>
+        <td class="sep">${fmt.num(c.revenue?.['2026'])}</td>
+        <td>${fmt.num(c.revenue?.['2027'])}</td>
+        <td>${fmt.yoy(c.revenue?.['yoy'])}</td>
+        <td class="sep">${fmt.num(c.op_profit?.['2026'])}</td>
+        <td>${fmt.num(c.op_profit?.['2027'])}</td>
+        <td>${fmt.yoy(c.op_profit?.['yoy'])}</td>
+        <td class="sep">${fmt.pct(c.opm?.['2026'])}</td>
+        <td>${fmt.pct(c.opm?.['2027'])}</td>
+        <td class="sep">${fmt.pct(c.npm?.['2026'])}</td>
+        <td>${fmt.pct(c.npm?.['2027'])}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table></div>`;
 }
 
 let allData = null;
@@ -193,9 +234,10 @@ function showSector(name) {
   document.querySelectorAll('.tab').forEach(t =>
     t.classList.toggle('active', t.dataset.sector === name));
   const companies = allData.sectors[name] || [];
+  const type = companies[0]?.type || 'multiples';
+  const table = type === 'earnings' ? renderEarnings(companies) : renderMultiples(companies);
   document.getElementById('content').innerHTML =
-    `<div class="meta">${name} · ${companies.length}개 종목 · 기준일 ${allData.updated_at}</div>` +
-    renderTable(companies);
+    `<div class="meta">${name} · ${companies.length}개 종목 · 기준일 ${allData.updated_at}</div>` + table;
 }
 
 async function load() {
