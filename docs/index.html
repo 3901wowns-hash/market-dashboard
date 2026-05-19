@@ -146,8 +146,8 @@ const fmt = {
     const cls = v < 15 ? 'pe-lo' : v > 30 ? 'pe-hi' : '';
     return `<span class="${cls}">${Number(v).toFixed(1)}x</span>`;
   },
-  mktcap: v => v == null ? '<span class="na">-</span>'
-    : `${Number(v).toLocaleString('ko-KR')}십억`,
+mktcap: v => v == null ? '<span class="na">-</span>'
+    : `${Math.round(Number(v)).toLocaleString('ko-KR')}십억`,
 };
 
 function renderMultiples(companies) {
