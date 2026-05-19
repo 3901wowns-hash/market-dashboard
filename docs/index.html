@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Equity Multiples Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #0e1117;
+  --bg2:     #161b26;
+  --bg3:     #1e2535;
+  --border:  #2a3246;
+  --border2: #374160;
+  --text:    #c8d0e0;
+  --text2:   #7a8499;
+  --text3:   #4a5268;
+  --accent:  #4a7cf7;
+  --up:      #34d399;
+  --down:    #f87171;
+  --mono:    'IBM Plex Mono', monospace;
+  --sans:    'IBM Plex Sans KR', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; min-height: 100vh; }
+
+header {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 28px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+header h1 { font-size: 14px; font-weight: 500; color: #e0e8f8; letter-spacing: 0.04em; }
+#updated { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 14px 28px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.tab {
+  padding: 7px 16px 9px;
+  font-size: 12px;
+  color: var(--text2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  user-select: none;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: #e0e8f8; border-bottom-color: var(--accent); font-weight: 500; }
+
+main { padding: 20px 28px; }
+
+.meta {
+  font-size: 10px;
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--text3);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+thead th {
+  text-align: right;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--text3);
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  background: var(--bg2);
+}
+thead th:first-child { text-align: left; }
+thead th.grp {
+  text-align: center;
+  color: var(--text2);
+  border-bottom: 1px solid var(--border2);
+  font-size: 10px;
+}
+thead th.sep { border-left: 1px solid var(--border); }
+
+tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+tbody tr:hover { background: var(--bg3); }
+
+td {
+  padding: 8px 10px;
+  text-align: right;
+  white-space: nowrap;
+  font-family: var(--mono);
+  color: var(--text);
+}
+td:first-child { text-align: left; font-family: var(--sans); color: #dce4f4; min-width: 120px; }
+td.sep { border-left: 1px solid var(--border); }
+
+.ticker { font-size: 10px; color: var(--text3); font-family: var(--mono); display: block; margin-top: 1px; }
+.na { color: var(--text3); }
+.pe-lo { color: #34d399; }
+.pe-hi { color: #f87171; }
+.mktcap { color: var(--text2); font-size: 11px; }
+
+#loading { text-align: center; padding: 80px 0; color: var(--text3); }
+#err { display: none; text-align: center; padding: 60px 0; color: var(--down); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Equity Multiples Dashboard</h1>
+  <span id="updated">로딩 중...</span>
+</header>
+
+<div class="tabs" id="tabs"></div>
+
+<main>
+  <div id="loading">데이터 불러오는 중...</div>
+  <div id="err">data.json을 찾을 수 없습니다. export_to_json.py를 먼저 실행하세요.</div>
+  <div id="content" style="display:none"></div>
+</main>
+
+<script>
+const fmt = {
+  num: v => v == null ? '<span class="na">-</span>' : Number(v).toLocaleString('ko-KR'),
+  x:   v => v == null ? '<span class="na">-</span>' : `${Number(v).toFixed(1)}x`,
+  pct: v => v == null ? '<span class="na">-</span>' : `${Number(v).toFixed(1)}%`,
+  pe:  v => {
+    if (v == null) return '<span class="na">-</span>';
+    const cls = v < 15 ? 'pe-lo' : v > 30 ? 'pe-hi' : '';
+    return `<span class="${cls}">${Number(v).toFixed(1)}x</span>`;
+  },
+  mktcap: v => {
+    if (v == null) return '<span class="na">-</span>';
+    return `<span class="mktcap">${Number(v).toLocaleString()}십억</span>`;
+  }
+};
+
+function renderTable(companies) {
+  return `
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th rowspan="2" style="text-align:left">종목</th>
+        <th rowspan="2">시총(십억)</th>
+        <th colspan="3" class="grp sep">P/E</th>
+        <th colspan="3" class="grp sep">P/B</th>
+        <th colspan="2" class="grp sep">EV/EBITDA</th>
+        <th colspan="2" class="grp sep">ROE</th>
+      </tr>
+      <tr>
+        <th class="sep">2026</th><th>2027</th><th>Fwd 12m</th>
+        <th class="sep">2026</th><th>2027</th><th>Fwd 12m</th>
+        <th class="sep">2026</th><th>2027</th>
+        <th class="sep">2026</th><th>2027</th>
+      </tr>
+    </thead>
+    <tbody>
+    ${companies.map(c => `
+      <tr>
+        <td>${c.name}<span class="ticker">${c.ticker}</span></td>
+        <td>${fmt.mktcap(c.mktcap)}</td>
+        <td class="sep">${fmt.pe(c.pe?.['2026'])}</td>
+        <td>${fmt.pe(c.pe?.['2027'])}</td>
+        <td>${fmt.pe(c.pe?.['fwd12m'])}</td>
+        <td class="sep">${fmt.x(c.pb?.['2026'])}</td>
+        <td>${fmt.x(c.pb?.['2027'])}</td>
+        <td>${fmt.x(c.pb?.['fwd12m'])}</td>
+        <td class="sep">${fmt.x(c.ev_ebitda?.['2026'])}</td>
+        <td>${fmt.x(c.ev_ebitda?.['2027'])}</td>
+        <td class="sep">${fmt.pct(c.roe?.['2026'])}</td>
+        <td>${fmt.pct(c.roe?.['2027'])}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  </div>`;
+}
+
+let allData = null;
+
+function showSector(name) {
+  document.querySelectorAll('.tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.sector === name));
+  const companies = allData.sectors[name] || [];
+  document.getElementById('content').innerHTML =
+    `<div class="meta">${name} · ${companies.length}개 종목 · 기준일 ${allData.updated_at}</div>` +
+    renderTable(companies);
+}
+
+async function load() {
+  try {
+    const res = await fetch('data.json?v=' + Date.now());
+    if (!res.ok) throw new Error();
+    allData = await res.json();
+    document.getElementById('updated').textContent = '기준일 ' + allData.updated_at;
+
+    const tabsEl = document.getElementById('tabs');
+    Object.keys(allData.sectors).forEach((s, i) => {
+      const btn = document.createElement('div');
+      btn.className = 'tab' + (i === 0 ? ' active' : '');
+      btn.textContent = s;
+      btn.dataset.sector = s;
+      btn.addEventListener('click', () => showSector(s));
+      tabsEl.appendChild(btn);
+    });
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+    const first = Object.keys(allData.sectors)[0];
+    if (first) showSector(first);
+  } catch(e) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('err').style.display = 'block';
+  }
+}
+load();
+</script>
+</body>
+</html>
