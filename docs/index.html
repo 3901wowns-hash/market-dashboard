@@ -135,7 +135,7 @@ td.sep { border-left: 1px solid var(--border); }
 const fmt = {
   x:    v => v == null ? '<span class="na">-</span>' : `${Number(v).toFixed(1)}x`,
   pct:  v => v == null ? '<span class="na">-</span>' : `${Number(v).toFixed(1)}%`,
-  num:  v => v == null ? '<span class="na">-</span>' : Number(v).toLocaleString('ko-KR'),
+  num:  v => v == null ? '<span class="na">-</span>' : Math.round(Number(v)).toLocaleString('ko-KR'),
   yoy:  v => {
     if (v == null) return '<span class="na">-</span>';
     const cls = v > 0 ? 'up' : v < 0 ? 'down' : '';
