@@ -1,0 +1,7 @@
+market.json
+.published_hash
+.pending_hash
+data.json
+publish_prompt.txt
+__pycache__/
+.env
