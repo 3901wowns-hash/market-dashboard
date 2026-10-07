@@ -3,7 +3,7 @@
 전일 종가와 전일 대비(지수류 %, 금리·스프레드 bp)를 계산한다. 노션 입력은 Claude가 market.json을 읽어서 한다.
 """
 import csv, io, json, os, re, sys, urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -154,7 +154,7 @@ def main():
         if a in SERIES and b in SERIES:
             yb = dict(SERIES[b])
             SERIES[code] = [(d, round((v - yb[d]) * 100, 1)) for d, v in SERIES[a] if d in yb]
-    page = {"generated": datetime.now().strftime("%Y-%m-%d %H:%M"), "items": [i for i in items if i["date"] == max(j["date"] for j in items if j["code"] == i["code"])],
+    page = {"generated": datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M"), "items": [i for i in items if i["date"] == max(j["date"] for j in items if j["code"] == i["code"])],
             "series": {c: [[d, round(v, 3)] for d, v in pts[-90:]] for c, pts in SERIES.items()}}
     json.dump(page, open(DATA, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     # 데이터가 지난 게시와 같으면(휴장일 등) 게시를 건너뛰기 위한 표시
