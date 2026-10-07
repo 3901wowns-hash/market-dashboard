@@ -20,13 +20,16 @@ YF = [
     ("N225", "닛케이225", "해외주식", "^N225", "pt"),
     ("SSEC", "상해종합", "해외주식", "000001.SS", "pt"),
     ("VIX", "VIX", "변동성", "^VIX", "pt"),
-    ("USDKRW", "원/달러", "환율", "KRW=X", "원"),
     ("DXY", "달러인덱스", "환율", "DX-Y.NYB", "pt"),
-    ("JPYKRW", "엔/원(100엔)", "환율", "JPYKRW=X", "원"),
     ("WTI", "WTI", "원자재", "CL=F", "$"),
     ("BRENT", "브렌트유", "원자재", "BZ=F", "$"),
     ("GOLD", "금", "원자재", "GC=F", "$"),
     ("COPPER", "구리", "원자재", "HG=F", "$"),
+]
+# 환율은 한국은행 서울외환시장 종가(ECOS)를 쓴다. ECOS 실패 시에만 야후로 대체.
+YF_FX = [
+    ("USDKRW", "원/달러", "환율", "KRW=X", "원"),
+    ("JPYKRW", "엔/원(100엔)", "환율", "JPYKRW=X", "원"),
 ]
 # FRED 시리즈 (%, 변화는 bp)
 FRED = [("US2Y", "美 국채 2년", "DGS2"), ("US10Y", "美 국채 10년", "DGS10")]
@@ -37,6 +40,11 @@ ECOS = [
     ("CD91", "CD 91일", "국내금리", "817Y002", "010502000", "D"),
     ("CORP_AA", "회사채 AA- 3년", "크레딧", "817Y002", "010300000", "D"),
     ("CORP_BBB", "회사채 BBB- 3년", "크레딧", "817Y002", "010320000", "D"),
+]
+# 환율 (통계코드 731Y003: 원/달러 종가 15:30, 원/100엔 하나은행 고시)
+ECOS_FX = [
+    ("USDKRW", "원/달러", "환율", "731Y003", "0000003", "D"),
+    ("JPYKRW", "엔/원(100엔)", "환율", "731Y003", "0000006", "D"),
 ]
 
 
@@ -97,10 +105,10 @@ def bar_done(code, day):
     return now >= datetime.combine(d, datetime.min.time(), tzinfo=ZoneInfo(tz)).replace(hour=close[0], minute=close[1]) + BUFFER
 
 
-def fetch_yf():
+def fetch_yf(lst=None):
     import yfinance as yf
     out, errs = [], []
-    for code, name, cat, tk, unit in YF:
+    for code, name, cat, tk, unit in (lst or YF):
         try:
             h = yf.Ticker(tk).history(period="130d", auto_adjust=False)["Close"].dropna()
             mul = 100 if code == "JPYKRW" else 1
@@ -159,12 +167,13 @@ def fetch_ecos():
     out, errs = [], []
     end = datetime.now().strftime("%Y%m%d")
     start = (datetime.now() - timedelta(days=130)).strftime("%Y%m%d")
-    for code, name, cat, stat, item, cyc in ECOS:
+    for code, name, cat, stat, item, cyc in ECOS + ECOS_FX:
+        fx = (code, name, cat, stat, item, cyc) in ECOS_FX
         try:
             u = f"https://ecos.bok.or.kr/api/StatisticSearch/{key}/json/kr/1/100/{stat}/{cyc}/{start}/{end}/{item}"
             rows = json.load(urllib.request.urlopen(u, timeout=30))["StatisticSearch"]["row"]
-            pts = [(f"{r['TIME'][:4]}-{r['TIME'][4:6]}-{r['TIME'][6:8]}", float(r["DATA_VALUE"])) for r in rows]
-            out += emit(code, name, cat, "%", pts, "bp")
+            pts = [(f"{r['TIME'][:4]}-{r['TIME'][4:6]}-{r['TIME'][6:8]}", float(r["DATA_VALUE"])) for r in rows if r.get("DATA_VALUE")]
+            out += emit(code, name, cat, "원" if fx else "%", pts, "pct" if fx else "bp")
         except Exception as e:
             errs.append(f"{code}: {e}")
     return out, errs
@@ -198,6 +207,12 @@ def main():
         r, e = fn()
         items += r
         errors += e
+    have = {i["code"] for i in items}
+    miss = [x for x in YF_FX if x[0] not in have]  # ECOS 환율 실패 시 야후로 대체
+    if miss:
+        r, e = fetch_yf(miss)
+        items += r
+        errors += e + [f"{x[0]}: ECOS 실패 → 야후로 대체" for x in miss]
     items += derived(items)
     # 파생 지표(스프레드) 추이: 두 시계열의 공통 날짜
     for code, a, b in [("US_2S10S", "US10Y", "US2Y"), ("KR_3S10S", "KTB10Y", "KTB3Y"),
