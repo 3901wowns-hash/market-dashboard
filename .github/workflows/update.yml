@@ -3,6 +3,7 @@ on:
   schedule:
     - cron: "17 22 * * 1-5"   # 07:17 KST 화~토 (미국 마감 반영). 정각·30분은 몰려서 지연/누락이 잦아 어중간한 분으로 둠
     - cron: "43 7 * * 1-5"    # 16:43 KST 월~금 (국내 마감 반영)
+    - cron: "1 8 * * *"   # TEMP test (remove after check)
   workflow_dispatch:
   push:
     branches: [main]
