@@ -70,15 +70,41 @@ def emit(code, name, cat, unit, pts, kind):
     return [row(code, name, cat, unit, pts[-k], pts[-k - 1], kind) for k in range(1, min(NDAYS, len(pts) - 1) + 1)]
 
 
+# 일봉이 확정되는 시각 (거래소 현지 기준). None = 24시간 거래라 "현지 날짜가 지난 봉"만 확정으로 본다.
+# 실행 서버가 UTC여도 장 마감 여부를 정확히 판정하기 위함 (UTC 날짜로 자르면 하루씩 밀린다).
+CLOSE = {
+    "KOSPI": ("Asia/Seoul", (15, 30)), "KOSDAQ": ("Asia/Seoul", (15, 30)),
+    "N225": ("Asia/Tokyo", (15, 30)), "SSEC": ("Asia/Shanghai", (15, 0)),
+    "SPX": ("America/New_York", (16, 0)), "NDX": ("America/New_York", (16, 0)), "VIX": ("America/New_York", (16, 15)),
+    "WTI": ("America/New_York", (17, 0)), "BRENT": ("America/New_York", (17, 0)),
+    "GOLD": ("America/New_York", (17, 0)), "COPPER": ("America/New_York", (17, 0)),
+    "DXY": ("America/New_York", (17, 0)),
+    "USDKRW": ("Europe/London", None), "JPYKRW": ("Europe/London", None),
+}
+BUFFER = timedelta(minutes=20)  # 마감 직후 데이터 반영 지연
+
+
+def bar_done(code, day):
+    """day(YYYY-MM-DD) 일봉이 확정됐는지"""
+    from zoneinfo import ZoneInfo
+    tz, close = CLOSE[code]
+    now = datetime.now(ZoneInfo(tz))
+    d = datetime.strptime(day, "%Y-%m-%d").date()
+    if d < now.date():
+        return True
+    if d > now.date() or close is None:
+        return False
+    return now >= datetime.combine(d, datetime.min.time(), tzinfo=ZoneInfo(tz)).replace(hour=close[0], minute=close[1]) + BUFFER
+
+
 def fetch_yf():
     import yfinance as yf
     out, errs = [], []
     for code, name, cat, tk, unit in YF:
         try:
             h = yf.Ticker(tk).history(period="130d", auto_adjust=False)["Close"].dropna()
-            today = datetime.now().strftime("%Y-%m-%d")  # 오늘자 봉은 장중 값이라 제외 (전일 종가 기준)
             mul = 100 if code == "JPYKRW" else 1
-            pts = [(i.strftime("%Y-%m-%d"), float(v) * mul) for i, v in h.items() if i.strftime("%Y-%m-%d") < today]
+            pts = [(i.strftime("%Y-%m-%d"), float(v) * mul) for i, v in h.items() if bar_done(code, i.strftime("%Y-%m-%d"))]
             if len(pts) < 2:
                 raise ValueError("데이터 부족")
             out += emit(code, name, cat, unit, pts, "pct")
@@ -87,8 +113,33 @@ def fetch_yf():
     return out, errs
 
 
-def fetch_fred():
+def fetch_treasury():
+    """美 국채 2·10년: 美 재무부 Daily Par Yield Curve (FRED DGS2/DGS10 의 원천, FRED보다 하루 빨리 공시된다)"""
+    cols = {"US2Y": "2 Yr", "US10Y": "10 Yr"}
+    names = {c: (n, s) for c, n, s in FRED}
     out, errs = [], []
+    try:
+        now = datetime.now()
+        rows = []
+        for yr in sorted({(now - timedelta(days=130)).year, now.year}):
+            u = ("https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/"
+                 f"{yr}/all?type=daily_treasury_yield_curve&field_tdr_date_value={yr}&page&_format=csv")
+            rows += list(csv.DictReader(io.StringIO(urllib.request.urlopen(u, timeout=30).read().decode("utf-8-sig"))))
+        for code, col in cols.items():
+            pts = sorted((datetime.strptime(r["Date"], "%m/%d/%Y").strftime("%Y-%m-%d"), float(r[col])) for r in rows if r.get(col))
+            if len(pts) < 2:
+                raise ValueError("데이터 부족")
+            out += emit(code, names[code][0], "해외금리", "%", pts[-100:], "bp")
+    except Exception as e:
+        return None, [f"재무부 실패 → FRED로 대체: {e}"]
+    return out, errs
+
+
+def fetch_fred():
+    got, errs0 = fetch_treasury()
+    if got is not None:
+        return got, errs0
+    out, errs = [], list(errs0)
     start = (datetime.now() - timedelta(days=130)).strftime("%Y-%m-%d")
     for code, name, sid in FRED:
         try:
