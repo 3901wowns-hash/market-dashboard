@@ -32,6 +32,8 @@ h1 { font: 700 30px/1.15 var(--serif); letter-spacing: -0.02em; margin: 0; }
 .stamp { text-align: right; font-size: 12px; color: var(--ink2); line-height: 1.5; }
 .stamp b { font-weight: 600; color: var(--ink); }
 .note { margin: 10px 0 0; font-size: 12px; color: var(--ink3); }
+.note.warn { color: #b45309; }
+@media (prefers-color-scheme: dark) { .note.warn { color: #f59e0b; } }
 
 .kicker { font: 600 11px/1 var(--sans); letter-spacing: .14em; color: var(--ink3); text-transform: uppercase; margin: 28px 0 10px; display: flex; align-items: center; gap: 10px; }
 .kicker::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
@@ -105,6 +107,7 @@ footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--rule);
     <div class="stamp" id="stamp">불러오는 중</div>
   </header>
   <p class="note">전일 종가 기준이며 지표마다 기준일이 다릅니다. 국내 금리·회사채는 한국은행 발표 기준이라 하루 늦고, 휴장일에는 직전 거래일 값을 표시합니다.</p>
+  <p class="note warn" id="warn" hidden></p>
 
   <div class="kicker">오늘의 핵심</div>
   <div class="keys" id="keys"></div>
@@ -342,6 +345,10 @@ footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--rule);
     data = d; d.items.forEach(function (i) { items[i.code] = i; });
     var g = d.generated || "", days = ["일", "월", "화", "수", "목", "금", "토"], dt = new Date(g.replace(" ", "T") + ":00");
     $("stamp").innerHTML = isNaN(dt) ? "갱신 " + g : "<b>" + dt.getFullYear() + "년 " + (dt.getMonth() + 1) + "월 " + dt.getDate() + "일 " + days[dt.getDay()] + "요일</b><br>갱신 " + g.slice(11) + " KST";
+    if (d.notes && d.notes.length) {
+      var w = $("warn"); w.hidden = false;
+      w.textContent = "⚠ 일부 지표는 대체 경로이거나 수집에 실패해 기준일이 늦을 수 있습니다 (" + d.notes.slice(0, 3).join(" / ") + (d.notes.length > 3 ? " 외 " + (d.notes.length - 3) + "건" : "") + ")";
+    }
     if (!items[sel]) sel = d.items[0].code;
     render();
   }).catch(function () {

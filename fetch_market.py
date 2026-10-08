@@ -201,6 +201,25 @@ def derived(items):
     return out
 
 
+def _step_summary(items, errors):
+    """GitHub Actions 실행 요약(Summary 탭)에 수집 결과를 남긴다. 로컬 실행에서는 아무것도 하지 않는다."""
+    p = os.environ.get("GITHUB_STEP_SUMMARY")
+    latest = {}
+    for i in items:
+        if i["code"] not in latest or i["date"] > latest[i["code"]]["date"]:
+            latest[i["code"]] = i
+    if not p or not latest:
+        return
+    ref = max(i["date"] for i in latest.values())
+    lines = [f"### 시장 지표 수집 결과 (가장 최신 기준일 {ref})", ""]
+    lines += [f"- ⚠️ {e}" for e in errors] or ["- 수집 실패·대체 없음"]
+    late = [f"{i['name']} {i['date']}" for i in latest.values() if i["date"] < ref]
+    if late:
+        lines += ["", "최신 기준일보다 늦은 지표: " + ", ".join(late)]
+    with open(p, "a", encoding="utf-8") as f:
+        f.write(("\n").join(lines) + "\n")
+
+
 def main():
     items, errors = [], []
     for fn in (fetch_yf, fetch_fred, fetch_ecos):
@@ -222,6 +241,10 @@ def main():
             SERIES[code] = [(d, round((v - yb[d]) * 100, 1)) for d, v in SERIES[a] if d in yb]
     page = {"generated": datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M"), "items": [i for i in items if i["date"] == max(j["date"] for j in items if j["code"] == i["code"])],
             "series": {c: [[d, round(v, 3)] for d, v in pts[-90:]] for c, pts in SERIES.items()}}
+    key = env("ECOS_API_KEY") or ""
+    safe = [(e.replace(key, "***") if key else e)[:90] for e in errors]
+    page["notes"] = safe[:8]  # 대체 경로·수집 실패 안내(페이지 상단에 표시)
+    _step_summary(items, safe)
     json.dump(page, open(DATA, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     # 데이터가 지난 게시와 같으면(휴장일 등) 게시를 건너뛰기 위한 표시
     import hashlib
