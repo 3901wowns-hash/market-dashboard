@@ -105,6 +105,21 @@ def bar_done(code, day):
     return now >= datetime.combine(d, datetime.min.time(), tzinfo=ZoneInfo(tz)).replace(hour=close[0], minute=close[1]) + BUFFER
 
 
+def provisional(code, tk, last_day, mul=1):
+    """마지막 일봉 이후 이미 마감된 거래일의 1시간봉 마지막 종가 [(날짜, 값)]. 정규장 종료 직전 봉이 있는 날만 인정."""
+    import yfinance as yf
+    tz, close = CLOSE[code]
+    if close is None:
+        return []
+    h = yf.Ticker(tk).history(period="7d", interval="60m", auto_adjust=False)["Close"].dropna()
+    days = {}
+    for ts, v in h.items():
+        t = ts.tz_convert(tz)
+        days[t.strftime("%Y-%m-%d")] = (t.hour, float(v) * mul)
+    return [(d, v) for d, (hr, v) in sorted(days.items())
+            if d > last_day and hr >= close[0] - 1 and bar_done(code, d)]
+
+
 def fetch_yf(lst=None):
     import yfinance as yf
     out, errs = [], []
@@ -115,6 +130,13 @@ def fetch_yf(lst=None):
             pts = [(i.strftime("%Y-%m-%d"), float(v) * mul) for i, v in h.items() if bar_done(code, i.strftime("%Y-%m-%d"))]
             if len(pts) < 2:
                 raise ValueError("데이터 부족")
+            try:  # 야후 일봉 집계가 늦으면 마감된 날의 1시간봉 마지막 종가를 잠정값으로 쓴다
+                extra = provisional(code, tk, pts[-1][0], mul)
+                if extra:
+                    pts += extra
+                    errs.append(f"{code}: 일봉 지연 → 1시간봉 잠정값({', '.join(d for d, _ in extra)})")
+            except Exception:
+                pass
             out += emit(code, name, cat, unit, pts, "pct")
         except Exception as e:
             errs.append(f"{code}: {e}")
