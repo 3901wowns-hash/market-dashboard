@@ -16,6 +16,7 @@ YF = [
     ("KOSPI", "KOSPI", "국내주식", "^KS11", "pt"),
     ("KOSDAQ", "KOSDAQ", "국내주식", "^KQ11", "pt"),
     ("SPX", "S&P500", "해외주식", "^GSPC", "pt"),
+    ("DJI", "다우존스", "해외주식", "^DJI", "pt"),
     ("NDX", "나스닥", "해외주식", "^IXIC", "pt"),
     ("N225", "닛케이225", "해외주식", "^N225", "pt"),
     ("SSEC", "상해종합", "해외주식", "000001.SS", "pt"),
@@ -83,7 +84,7 @@ def emit(code, name, cat, unit, pts, kind):
 CLOSE = {
     "KOSPI": ("Asia/Seoul", (15, 30)), "KOSDAQ": ("Asia/Seoul", (15, 30)),
     "N225": ("Asia/Tokyo", (15, 30)), "SSEC": ("Asia/Shanghai", (15, 0)),
-    "SPX": ("America/New_York", (16, 0)), "NDX": ("America/New_York", (16, 0)), "VIX": ("America/New_York", (16, 15)),
+    "SPX": ("America/New_York", (16, 0)), "DJI": ("America/New_York", (16, 0)), "NDX": ("America/New_York", (16, 0)), "VIX": ("America/New_York", (16, 15)),
     "WTI": ("America/New_York", (17, 0)), "BRENT": ("America/New_York", (17, 0)),
     "GOLD": ("America/New_York", (17, 0)), "COPPER": ("America/New_York", (17, 0)),
     "DXY": ("America/New_York", (17, 0)),
