@@ -121,6 +121,18 @@ def provisional(code, tk, last_day, mul=1):
             if d > last_day and hr >= close[0] - 1 and bar_done(code, d)]
 
 
+NAVER_IDX = {"KOSPI": "KOSPI", "KOSDAQ": "KOSDAQ"}   # 야후 ^KS11 일봉이 빠지거나 1시간봉(15시 전 가격)으로 채워지는 문제 → 네이버 종가로 보정
+
+
+def naver_close(code, n=10):
+    """네이버 지수 일별 종가 {날짜: 값} (확정된 날만)"""
+    url = f"https://m.stock.naver.com/api/index/{NAVER_IDX[code]}/price?pageSize={n}&page=1"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    rows = json.loads(urllib.request.urlopen(req, timeout=10).read().decode("utf-8"))
+    return {r["localTradedAt"][:10]: float(r["closePrice"].replace(",", "")) for r in rows
+            if bar_done(code, r["localTradedAt"][:10])}
+
+
 def fetch_yf(lst=None):
     import yfinance as yf
     out, errs = [], []
@@ -138,6 +150,16 @@ def fetch_yf(lst=None):
                     errs.append(f"{code}: 일봉 지연 → 1시간봉 잠정값({', '.join(d for d, _ in extra)})")
             except Exception:
                 pass
+            if code in NAVER_IDX:
+                try:
+                    nv = naver_close(code)
+                    first = min(nv) if nv else "9999"
+                    merged = {d: v for d, v in pts if d < first}    # 네이버가 덮는 기간은 네이버 값만 (잠정값·빠진 날 정리)
+                    merged.update(nv)
+                    pts = sorted(merged.items())
+                    errs[:] = [e for e in errs if not e.startswith(code + ":")]
+                except Exception as e:
+                    errs.append(f"{code}: 네이버 보정 실패({e}) → 야후 값 사용")
             out += emit(code, name, cat, unit, pts, "pct")
         except Exception as e:
             errs.append(f"{code}: {e}")
