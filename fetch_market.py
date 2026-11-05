@@ -64,10 +64,16 @@ def row(code, name, cat, unit, last, prev, kind):
     (d1, v1), (d0, v0) = last, prev
     chg = (v1 / v0 - 1) * 100 if kind == "pct" else (v1 - v0) * 100
     chg = round(chg, 2 if kind == "pct" else 1)
-    return {"code": code, "name": name, "cat": cat, "unit": unit, "date": d1, "value": round(v1, 3),
-            "prev_date": d0, "prev_value": round(v0, 3), "change": chg,
-            "change_unit": "%" if kind == "pct" else "bp",
-            "dir": "▲" if chg > 0 else "▼" if chg < 0 else "―"}
+    r = {"code": code, "name": name, "cat": cat, "unit": unit, "date": d1, "value": round(v1, 3),
+         "prev_date": d0, "prev_value": round(v0, 3), "change": chg,
+         "change_unit": "%" if kind == "pct" else "bp",
+         "dir": "▲" if chg > 0 else "▼" if chg < 0 else "―"}
+    if (code, d1) in PROV or (code, d0) in PROV:
+        r["prov"] = True          # 1시간봉으로 채운 잠정값(공식 종가와 다를 수 있음) → 화면에 '잠정' 표시
+    return r
+
+
+PROV = set()                      # (코드, 날짜): 일봉이 없어 1시간봉으로 대신한 값
 
 
 NDAYS = int(sys.argv[sys.argv.index("--days") + 1]) if "--days" in sys.argv else 1
@@ -147,6 +153,7 @@ def fetch_yf(lst=None):
                 extra = provisional(code, tk, pts[-1][0], mul)
                 if extra:
                     pts += extra
+                    PROV.update((code, d) for d, _ in extra)
                     errs.append(f"{code}: 일봉 지연 → 1시간봉 잠정값({', '.join(d for d, _ in extra)})")
             except Exception:
                 pass
@@ -157,6 +164,7 @@ def fetch_yf(lst=None):
                     merged = {d: v for d, v in pts if d < first}    # 네이버가 덮는 기간은 네이버 값만 (잠정값·빠진 날 정리)
                     merged.update(nv)
                     pts = sorted(merged.items())
+                    PROV.difference_update({k for k in PROV if k[0] == code})   # 네이버 확정 종가로 대체됨
                     errs[:] = [e for e in errs if not e.startswith(code + ":")]
                 except Exception as e:
                     errs.append(f"{code}: 네이버 보정 실패({e}) → 야후 값 사용")

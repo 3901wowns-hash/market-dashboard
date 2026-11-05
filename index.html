@@ -368,7 +368,7 @@ footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--rule);
       html += '<section><h2>' + cat + '</h2>';
       by[cat].forEach(function (it) {
         html += '<button type="button" class="row" data-code="' + it.code + '" aria-pressed="' + (it.code === sel) + '">' +
-          '<span class="rname">' + it.name + '<small class="num">' + md(it.date) + '</small></span>' +
+          '<span class="rname">' + it.name + '<small class="num">' + md(it.date) + (it.prov ? ' 잠정' : '') + '</small></span>' +
           '<span class="rnum num"><b>' + fmt(it, it.value) + '</b>' + chip(it) + '</span>' +
           sparkSvg((data.series[it.code] || []).slice(-60), colorOf(it)) + '</button>';
       });
